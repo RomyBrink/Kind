@@ -127,6 +127,7 @@ if uploaded_files:
         st.pyplot(plt)
     else:
         st.info("Geen Delivered alarms in het geselecteerde datum bereik voor de heatmap.")
+    
         
     # ---------------- ALARM TYPE GRAFIEK (Delivered vs Finished) ----------------
     st.subheader("Aantal alarmen per alarmtype (Delivered vs Finished)")
@@ -209,6 +210,88 @@ if uploaded_files:
     
     st.pyplot(fig2)
 
+    # ---------------- INTERACTIEVE KAMER + DATUM SELECTIE ----------------
+    st.subheader("Bekijk alarmtype + saturatiegrafiek per specifieke dag en kamer")
+
+    if not heatmap_df.empty:
+
+        # Datumselectie gebaseerd op beschikbare datums in de heatmap
+        beschikbare_datums = sorted(heatmap_df["Date"].unique())
+        selected_day = st.selectbox("Kies een datum:", beschikbare_datums)
+
+        # Kamers die op deze dag meldingen hebben
+        kamers_op_dag = heatmap_df[heatmap_df["Date"] == selected_day]["kamer"].unique()
+        selected_room = st.selectbox("Kies een kamer:", kamers_op_dag)
+
+        # Filter op datum + kamer
+        dag_kamer_finished = finished_df[
+            (finished_df["Date"] == selected_day) &
+            (finished_df["kind"] == selected_room)
+        ]
+
+        dag_kamer_delivered = deliverd_df[
+            (deliverd_df["Date"] == selected_day) &
+            (deliverd_df["kind"] == selected_room)
+        ]
+
+        st.markdown(f"### Resultaten voor: **{selected_day} – Kamer {selected_room}**")
+
+        # ---- Alarmtype grafiek per dag + kamer ----
+        alarm_rows_subset = []
+        for naam, zoekterm in alarm_termen.items():
+
+            d_count = dag_kamer_delivered[
+                dag_kamer_delivered['Message'].str.contains(zoekterm, case=False, na=False)
+            ].shape[0]
+
+            f_count = dag_kamer_finished[
+                dag_kamer_finished['Message'].str.contains(zoekterm, case=False, na=False)
+            ].shape[0]
+
+            alarm_rows_subset.append([naam, d_count, f_count])
+
+        alarmtype_subset_df = pd.DataFrame(
+            alarm_rows_subset,
+            columns=['Alarmtype', 'Delivered', 'Finished']
+        )
+
+        fig_sub, ax_sub = plt.subplots(figsize=(12, 5))
+        x = np.arange(len(alarmtype_subset_df))
+        width = 0.35
+
+        ax_sub.bar(x - width/2, alarmtype_subset_df['Delivered'], width, label='Delivered')
+        ax_sub.bar(x + width/2, alarmtype_subset_df['Finished'], width, label='Finished')
+
+        ax_sub.set_xticks(x)
+        ax_sub.set_xticklabels(alarmtype_subset_df['Alarmtype'], rotation=45, ha='right')
+        ax_sub.set_ylabel("Aantal")
+        ax_sub.set_title(f"Delivered vs Finished per type – Kamer {selected_room} op {selected_day}")
+        ax_sub.legend()
+
+        st.pyplot(fig_sub)
+
+        # ---- Saturatie grafiek per dag + kamer ----
+        df_sat_subset = dag_kamer_finished[
+            dag_kamer_finished["Message"].str.contains("saturatie", case=False, na=False)
+        ].copy()
+
+        df_sat_subset["Saturatie"] = df_sat_subset["Message"].apply(extract_saturatie)
+        df_sat_subset = df_sat_subset.dropna(subset=["Saturatie"])
+
+        if not df_sat_subset.empty:
+            sat_counts = df_sat_subset["Saturatie"].value_counts().sort_index()
+
+            fig_sat, ax_sat = plt.subplots(figsize=(12, 5))
+            ax_sat.bar(sat_counts.index.astype(str), sat_counts.values)
+
+            ax_sat.set_xlabel("Saturatie waarde")
+            ax_sat.set_ylabel("Aantal")
+            ax_sat.set_title(f"Saturatieverdeling – Kamer {selected_room} op {selected_day}")
+            ax_sat.set_xticklabels(sat_counts.index.astype(str), rotation=45)
+
+            st.pyplot(fig_sat)
+        else:
+            st.info("Geen saturatie-alarmen voor deze datum en kamer.")
 
     # ---------------- PIE CHART ----------------
     st.write("Deze Pie Chart laat de afhandeling van alarmen zien als PRIMAIRE VERPLEEGKUNDIGE.")
