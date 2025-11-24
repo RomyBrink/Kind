@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from io import BytesIO
 
 st.title("Interactief Data Dashboard - Meerdere bestanden uploaden")
 
@@ -75,7 +76,6 @@ if uploaded_files:
         max_value=max_date
     )
 
-    # Zorg dat het altijd een tuple van twee datums is
     if isinstance(selected_dates, tuple):
         start_date, end_date = selected_dates
     else:
@@ -111,7 +111,6 @@ if uploaded_files:
     st.pyplot(plt)
 
     # ---------------- HEATMAP ----------------
-    # Kamer extractie uit Location_kopie
     deliverd_df['kamer'] = deliverd_df['Location_kopie'].str.split('/').str[-1].str.strip()
     heatmap_df = deliverd_df[(deliverd_df['Date'] >= start_date) & (deliverd_df['Date'] <= end_date)]
 
@@ -128,3 +127,54 @@ if uploaded_files:
         st.pyplot(plt)
     else:
         st.info("Geen Delivered alarms in het geselecteerde datum bereik voor de heatmap.")
+
+    # ---------------- PIE CHART ----------------
+    # Filter relevante alarmen
+    filtered_df = combined_df[combined_df['Status'].isin(['Started', 'Delivered', 'Received response', 'Erase on response'])].copy()
+    filtered_df['Time_diff_seconds'] = (filtered_df['Date and time'] - filtered_df.groupby('id')['Date and time'].transform('min')).dt.total_seconds()
+    filtered_df = filtered_df[(filtered_df['Date'] >= start_date) & (filtered_df['Date'] <= end_date)]
+
+    # Device selectbox
+    smart_devices = combined_df.loc[combined_df['Service name'] == 'SmartAndroid', 'Device name'].unique()
+    selected_device = st.selectbox("Selecteer een verpleegkundige/device voor de pie chart:", options=['Alle'] + list(smart_devices))
+
+    def calculate_pie_data(filtered_df, device=None):
+        pie_chart_totals = {'Geen reactie': 0, 'Geaccepteerd, geweigerd of bezet knop': 0, 'Opgelost': 0}
+        for alarm_id, alarm_rows in filtered_df.groupby('id'):
+            involved_devices = alarm_rows['Device name'].dropna().unique()
+            if device and device != 'Alle':
+                if device not in involved_devices:
+                    continue
+                involved_devices = [device]
+
+            started_rows = alarm_rows[alarm_rows['Status'] == 'Started']
+            if started_rows.empty:
+                continue
+            first_started = started_rows.iloc[0]
+            rows_after_started = alarm_rows[alarm_rows.index > first_started.name]
+            responses_in_between = rows_after_started['Response'].dropna().str.strip()
+            relevant_responses = responses_in_between.isin(['Accepted alarm', 'Rejected alarm', 'User is busy'])
+
+            for dev in involved_devices:
+                if relevant_responses.any():
+                    pie_chart_totals['Geaccepteerd, geweigerd of bezet knop'] += 1
+                else:
+                    second_delivered_after_3_sec = (alarm_rows['Status'] == 'Delivered') & (alarm_rows['Time_diff_seconds'] > 3)
+                    if second_delivered_after_3_sec.any():
+                        pie_chart_totals['Geen reactie'] += 1
+                    else:
+                        pie_chart_totals['Opgelost'] += 1
+        return pie_chart_totals
+
+    pie_totals = calculate_pie_data(filtered_df, device=selected_device)
+
+    labels = ['Geen reactie', 'Geaccepteerd, geweigerd of bezet knop', 'Opgelost']
+    sizes = [pie_totals[label] for label in labels]
+
+    if sum(sizes) == 0:
+        sizes = [1, 1, 1]  # Voor lege data
+
+    plt.figure(figsize=(6, 6))
+    plt.pie(sizes, labels=labels, autopct='%1.1f%%', colors=['lightcoral','lightblue', 'lightgreen'], textprops={'fontsize': 12})
+    plt.title(f'Afhandeling van alarmen voor {selected_device}')
+    st.pyplot(plt)
