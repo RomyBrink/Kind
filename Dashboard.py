@@ -292,6 +292,32 @@ if uploaded_files:
             st.pyplot(fig_sat)
         else:
             st.info("Geen saturatie-alarmen voor deze datum en kamer.")
+            # ---- BARPLOT: Aantal alarmen per device (per dag + kamer) ----
+        st.subheader("Aantal alarmen per verpleegkundige/device (gefilterd op datum + kamer)")
+    
+        # Filter ALLE alarmen (Finished + Delivered + Started etc) voor die kamer + dag
+        dag_kamer_all = combined_df[
+            (combined_df["Date"] == selected_day) &
+            (combined_df["kind"] == selected_room)
+        ].copy()
+    
+        if dag_kamer_all.empty:
+            st.info("Geen alarmen gevonden voor deze datum en kamer.")
+        else:
+            # Aantal alarmen per device
+            alarms_per_device = dag_kamer_all.groupby("Device name").size().sort_values(ascending=False)
+    
+            # Plot
+            fig_dev, ax_dev = plt.subplots(figsize=(12, 5))
+            ax_dev.bar(alarms_per_device.index.astype(str), alarms_per_device.values)
+    
+            ax_dev.set_xlabel("Device / Verpleegkundige")
+            ax_dev.set_ylabel("Aantal alarmen")
+            ax_dev.set_title(f"Alarmen ontvangen per verpleegkundige – Kamer {selected_room} op {selected_day}")
+            ax_dev.set_xticklabels(alarms_per_device.index.astype(str), rotation=45, ha='right')
+    
+            st.pyplot(fig_dev)
+
 
     # ---------------- PIE CHART ----------------
     st.write("Deze Pie Chart laat de afhandeling van alarmen zien als PRIMAIRE VERPLEEGKUNDIGE.")
