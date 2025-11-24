@@ -127,8 +127,91 @@ if uploaded_files:
         st.pyplot(plt)
     else:
         st.info("Geen Delivered alarms in het geselecteerde datum bereik voor de heatmap.")
+        
+    # ---------------- ALARM TYPE GRAFIEK (Delivered vs Finished) ----------------
+    st.subheader("Aantal alarmen per alarmtype (Delivered vs Finished)")
+    
+    # Label mapping
+    alarm_termen = {
+        'Lage saturatie': 'lage saturatie',
+        'Apnoe': 'apnoe',
+        'Ademfrequentie error': 'ademfrequentie error',
+        'Sensor los': 'sensor los',
+        'ECG alle leads los': 'ECG alle leads los',
+        'Lage hartfrequentie': 'lage hartfreq',
+        'Hoge hartfrequentie': 'hoge hartfreq',
+        'Asystolie': 'asystolie'
+    }
+    
+    alarm_rows = []
+    
+    for naam, zoekterm in alarm_termen.items():
+    
+        delivered_count = filtered_delivered[
+            filtered_delivered['Message'].str.contains(zoekterm, case=False, na=False)
+        ].shape[0]
+    
+        finished_count = filtered_finished[
+            filtered_finished['Message'].str.contains(zoekterm, case=False, na=False)
+        ].shape[0]
+    
+        alarm_rows.append([naam, delivered_count, finished_count])
+    
+    alarmtype_df = pd.DataFrame(alarm_rows, columns=['Alarmtype', 'Delivered', 'Finished'])
+    
+    # Plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    x = np.arange(len(alarmtype_df))
+    width = 0.35
+    
+    ax.bar(x - width/2, alarmtype_df['Delivered'], width, label='Delivered')
+    ax.bar(x + width/2, alarmtype_df['Finished'], width, label='Finished')
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(alarmtype_df['Alarmtype'], rotation=45, ha='right')
+    ax.set_ylabel("Aantal")
+    ax.set_title("Aantal delivered en finished alarmen per alarmtype")
+    ax.legend()
+    
+    st.pyplot(fig)
+    
+    
+    # ---------------- SATURATIE GRAFIEK (Finished Only) ----------------
+    st.subheader("Saturatiewaardes van Finished alarmen")
+    
+    # Filter alleen finished + saturatie
+    df_saturatie = filtered_finished[
+        filtered_finished["Message"].str.contains("saturatie", case=False, na=False)
+    ].copy()
+    
+    import re
+    
+    def extract_saturatie(msg):
+        match = re.search(r'saturatie\s+(\d+)', str(msg), re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        return None
+    
+    df_saturatie["Saturatie"] = df_saturatie["Message"].apply(extract_saturatie)
+    df_saturatie = df_saturatie.dropna(subset=["Saturatie"])
+    
+    # Tel waarden
+    saturatie_counts = df_saturatie["Saturatie"].value_counts().sort_index()
+    
+    # Plot
+    fig2, ax2 = plt.subplots(figsize=(12, 6))
+    ax2.bar(saturatie_counts.index.astype(str), saturatie_counts.values, color='red')
+    
+    ax2.set_xlabel("Saturatie waarde")
+    ax2.set_ylabel("Aantal")
+    ax2.set_title("Aantal finished-alarmen per saturatiewaarde")
+    ax2.set_xticklabels(saturatie_counts.index.astype(str), rotation=45)
+    
+    st.pyplot(fig2)
+
 
     # ---------------- PIE CHART ----------------
+    st.write("Deze Pie Chart laat de afhandeling van alarmen zien als PRIMAIRE VERPLEEGKUNDIGE.")
     # Filter relevante alarmen
     filtered_df = combined_df[combined_df['Status'].isin(['Started', 'Delivered', 'Received response', 'Erase on response'])].copy()
     filtered_df['Time_diff_seconds'] = (filtered_df['Date and time'] - filtered_df.groupby('id')['Date and time'].transform('min')).dt.total_seconds()
@@ -179,7 +262,7 @@ if uploaded_files:
     plt.title(f'Afhandeling van alarmen voor {selected_device}')
     st.pyplot(plt)
     # ---------------- BARPLOT: Percentage Accepted per device ----------------
-    
+    st.write("Deze barplot laat het procent geaccepteerde alarmen op ALLE alarmen die de verpleegkundige binnen heeft gekregen zien.")
     st.subheader("Percentage geaccepteerde alarmen per verpleegkundige/device")
     
     # Gebruik alleen data binnen datumrange
