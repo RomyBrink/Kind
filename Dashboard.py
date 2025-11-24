@@ -2,18 +2,33 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-st.title("Interactief Data Dashboard")
+st.title("Interactief Data Dashboard - Meerdere bestanden uploaden")
 
-uploaded_file = st.file_uploader("Upload je Excel/CSV bestand", type=["csv", "xlsx"])
+# Meerdere bestanden uploaden
+uploaded_files = st.file_uploader(
+    "Upload één of meerdere CSV/Excel bestanden",
+    type=["csv", "xlsx"],
+    accept_multiple_files=True
+)
 
-if uploaded_file is not None:
-    if uploaded_file.name.endswith('.csv'):
-        combined_df = pd.read_csv(uploaded_file)
-    else:
-        combined_df = pd.read_excel(uploaded_file)
+if uploaded_files:
+    data_frames = []
 
-    # Data voorbereiden
+    # Bestanden inlezen
+    for uploaded_file in uploaded_files:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+        data_frames.append(df)
+
+    # Combineer alle bestanden
+    combined_df = pd.concat(data_frames, ignore_index=True)
+    st.success(f"{len(uploaded_files)} bestanden succesvol gecombineerd!")
+
+    #%% Data opschonen en verwerken
     combined_df['Date and time'] = pd.to_datetime(combined_df['Date and time'], format='%d-%m-%Y %H:%M:%S.%f')
     combined_df['kind'] = combined_df['Location'].str.split('/').str[-1].str.strip()
     combined_df['Date'] = combined_df['Date and time'].dt.date
@@ -36,6 +51,7 @@ if uploaded_file is not None:
 
     finished_df = combined_df[combined_df['Status'] == 'Finished']
     deliverd_df = combined_df[combined_df['Status'] == 'Delivered']
+
     finished2_df = combined2_df[combined2_df['Status'] == 'Finished']
     deliverd2_df = combined2_df[combined2_df['Status'] == 'Delivered']
 
@@ -47,13 +63,17 @@ if uploaded_file is not None:
     # Datum selectie door gebruiker
     min_date = combined_df['Date'].min()
     max_date = combined_df['Date'].max()
-    selected_date = st.date_input("Selecteer datum voor grafiek:", value=max_date, min_value=min_date, max_value=max_date)
+    selected_date = st.date_input(
+        "Selecteer datum voor grafieken:",
+        value=max_date,
+        min_value=min_date,
+        max_value=max_date
+    )
 
-    # Filter op geselecteerde datum
+    # ---------------- LINE PLOT ----------------
     filtered_finished = df[df['Date'] == selected_date]
     filtered_delivered = dfd[dfd['Date'] == selected_date]
 
-    # Groepeer per datum
     delivered_counts = filtered_delivered.groupby('Date').size()
     finished_counts = filtered_finished.groupby('Date').size()
 
@@ -65,7 +85,6 @@ if uploaded_file is not None:
     avg_delivered = plot_df['Delivered'].mean() if not plot_df.empty else 0
     avg_finished = plot_df['Finished'].mean() if not plot_df.empty else 0
 
-    # Plotten
     plt.figure(figsize=(12, 6))
     plot_df.plot(kind='line', marker='o', ax=plt.gca())
     plt.axhline(y=avg_delivered, color='blue', linestyle='--', label=f'Gem. Delivered ({avg_delivered:.1f})')
@@ -77,5 +96,23 @@ if uploaded_file is not None:
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.legend(title='Status')
-    
     st.pyplot(plt)
+
+    # ---------------- HEATMAP ----------------
+    # Kamer extractie uit Location
+    deliverd_df['kamer'] = deliverd_df['Location'].str.split('/').str[-1].str.strip()
+    heatmap_df = deliverd_df[deliverd_df['Date'] == selected_date]
+
+    if not heatmap_df.empty:
+        heatmap_data = heatmap_df.groupby(['Date', 'kamer']).size().reset_index(name='Aantal')
+        pivot_table = heatmap_data.pivot(index='Date', columns='kamer', values='Aantal').fillna(0)
+
+        plt.figure(figsize=(12, 4))
+        sns.heatmap(pivot_table, annot=True, fmt=".0f", cmap='YlOrRd', cbar_kws={'label': 'Aantal Delivered alarms'})
+        plt.title(f'Heatmap van Delivered alarms per kamer op {selected_date}')
+        plt.xlabel('Kamer')
+        plt.ylabel('Datum')
+        plt.tight_layout()
+        st.pyplot(plt)
+    else:
+        st.info("Geen Delivered alarms op de geselecteerde datum voor de heatmap.")
