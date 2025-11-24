@@ -178,3 +178,46 @@ if uploaded_files:
     plt.pie(sizes, labels=labels, autopct='%1.1f%%', colors=['lightcoral','lightblue', 'lightgreen'], textprops={'fontsize': 12})
     plt.title(f'Afhandeling van alarmen voor {selected_device}')
     st.pyplot(plt)
+    # ---------------- BARPLOT: Percentage Accepted per device ----------------
+    
+    st.subheader("Percentage geaccepteerde alarmen per verpleegkundige/device")
+    
+    # Gebruik alleen data binnen datumrange
+    delivered_range = filtered_delivered.copy()
+    
+    # Voor barplot hebben we Delivered + Responses nodig
+    df_range = combined_df[(combined_df['Date'] >= start_date) & (combined_df['Date'] <= end_date)]
+    
+    # Zorg dat Response kolom bestaat
+    df_range['Response'] = df_range['Response'].fillna('')
+    
+    # Tel aantal Delivered per device
+    delivered_per_device = df_range[df_range['Status'] == 'Delivered'].groupby('Device name').size()
+    
+    # Tel aantal Accepted per device
+    accepted_per_device = df_range[df_range['Response'] == 'Accepted alarm'].groupby('Device name').size()
+    
+    # Maak dataframe voor percentages
+    barplot_df = pd.DataFrame({
+        'Delivered': delivered_per_device,
+        'Accepted': accepted_per_device
+    }).fillna(0)
+    
+    # Bereken percentage
+    barplot_df['Accepted %'] = (barplot_df['Accepted'] / barplot_df['Delivered']) * 100
+    barplot_df = barplot_df.sort_values('Accepted %', ascending=False)
+    
+    if not barplot_df.empty and barplot_df['Delivered'].sum() > 0:
+    
+        plt.figure(figsize=(12, 6))
+        plt.bar(barplot_df.index, barplot_df['Accepted %'])
+        plt.xticks(rotation=90)
+        plt.ylabel('Percentage geaccepteerde alarmen (%)')
+        plt.xlabel('Device name')
+        plt.title('Percentage Accepted per toestel (binnen geselecteerde datum range)')
+        plt.tight_layout()
+        st.pyplot(plt)
+    
+    else:
+        st.info("Onvoldoende data voor het genereren van de barplot in deze periode.")
+    
