@@ -150,20 +150,11 @@ st.markdown("---")
 
 st.markdown("## Heatmap & Kamer-selectie")
 
-# --------------------------------------------------------------
-# ZORG DAT ALLE DATAFRAMES DEZELFDE 'kamer'-KOLOM HEBBEN
-# --------------------------------------------------------------
-deliverd_df['kamer'] = deliverd_df['Location_kopie'].astype(str).str.split('/').str[-1].str.strip()
-finished_df['kamer'] = finished_df['Location_kopie'].astype(str).str.split('/').str[-1].str.strip()
-combined_df['kamer'] = combined_df['Location_kopie'].astype(str).str.split('/').str[-1].str.strip()
-
-# --------------------------------------------------------------
-# ----------------------- HEATMAP -------------------------------
-# --------------------------------------------------------------
+# ---------- HEATMAP ----------
 with st.container():
     st.markdown(f"### Heatmap: Delivered per kamer")
 
-    # Apply date range filter
+    deliverd_df['kamer'] = deliverd_df['Location_kopie'].astype(str).str.split('/').str[-1].str.strip()
     heatmap_df = deliverd_df[(deliverd_df['Date'] >= start_date) & (deliverd_df['Date'] <= end_date)]
 
     if not heatmap_df.empty:
@@ -177,9 +168,7 @@ with st.container():
     else:
         st.info("Geen data voor de heatmap.")
 
-# --------------------------------------------------------------
-# ------------------ FILTERS: DATUM + KAMER --------------------
-# --------------------------------------------------------------
+# ---------- FILTERS (DATUM + KAMER) ----------
 with st.container():
     st.markdown("### Selecteer datum & kamer voor details")
 
@@ -195,16 +184,13 @@ with st.container():
 
     st.markdown(f"**Geselecteerd:** {selected_day} — Kamer {selected_room}")
 
-    # Correct filtering for graphs
-    dag_kamer_finished = finished_df[(finished_df['Date'] == selected_day) & (finished_df['kamer'] == selected_room)]
-    dag_kamer_delivered = deliverd_df[(deliverd_df['Date'] == selected_day) & (deliverd_df['kamer'] == selected_room)]
+    dag_kamer_finished = finished_df[(finished_df['Date'] == selected_day) & (finished_df['kind'] == selected_room)]
+    dag_kamer_delivered = deliverd_df[(deliverd_df['Date'] == selected_day) & (deliverd_df['kind'] == selected_room)]
 
-# --------------------------------------------------------------
-# ----------- DRIE DETAILS GRAFIEKEN IN KOLOMMEN --------------
-# --------------------------------------------------------------
+# ---------- DRIE DETAILS GRAFIEKEN IN KOLOMMEN ----------
 col1, col2, col3 = st.columns(3)
 
-# -------------------- GRAFIEK 1 ------------------------------
+# --- GRAFIEK 1 ---
 with col1:
     st.markdown("#### Delivered vs Finished per alarmtype")
 
@@ -223,7 +209,6 @@ with col1:
         d = dag_kamer_delivered['Message'].str.contains(term, case=False, na=False).sum()
         f = dag_kamer_finished['Message'].str.contains(term, case=False, na=False).sum()
         rows.append([naam, d, f])
-
     df_alarm = pd.DataFrame(rows, columns=['Alarmtype', 'Delivered', 'Finished'])
 
     figA, axA = plt.subplots(figsize=(5, 3))
@@ -236,16 +221,13 @@ with col1:
     axA.legend()
     st.pyplot(figA)
 
-# -------------------- GRAFIEK 2 ------------------------------
+# --- GRAFIEK 2 ---
 with col2:
     st.markdown("#### Saturatieverdeling (Finished)")
-
     df_sat = dag_kamer_finished[dag_kamer_finished['Message'].str.contains('saturatie', case=False, na=False)]
-
     def extract_sat(m):
         match = re.search(r'saturatie\s+(\d+)', str(m), re.IGNORECASE)
         return int(match.group(1)) if match else None
-
     df_sat['Saturatie'] = df_sat['Message'].apply(extract_sat)
     df_sat = df_sat.dropna(subset=['Saturatie'])
 
@@ -258,19 +240,12 @@ with col2:
     else:
         st.info("Geen saturatie-waarden.")
 
-# -------------------- GRAFIEK 3 ------------------------------
+# --- GRAFIEK 3 ---
 with col3:
     st.markdown("#### Alarmen per device")
 
-    # ✔ dezelfde filtering als de andere grafieken
-    dag_all = combined_df[
-        (combined_df['Date'] == selected_day) &
-        (combined_df['kamer'] == selected_room)
-    ]
-
-    # Optioneel: beperk tot delivered + finished events
-    if 'Status' in dag_all.columns:
-        dag_all = dag_all[dag_all['Status'].isin(['delivered', 'finished'])]
+    # Gebruik exact dezelfde filtering als grafiek 1 & 2
+    dag_all = pd.concat([dag_kamer_delivered, dag_kamer_finished], ignore_index=True)
 
     if dag_all.empty:
         st.info("Geen alarmen.")
