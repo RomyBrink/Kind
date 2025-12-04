@@ -155,7 +155,6 @@ with st.container():
     st.markdown(f"### Heatmap: Delivered per kamer")
 
     deliverd_df['kamer'] = deliverd_df['Location_kopie'].astype(str).str.split('/').str[-1].str.strip()
-    deliverd_df['kamer'] = deliverd_df.groupby('alarm_id')['kamer'].transform(lambda x: x.ffill().bfill())
     heatmap_df = deliverd_df[(deliverd_df['Date'] >= start_date) & (deliverd_df['Date'] <= end_date)]
 
     if not heatmap_df.empty:
