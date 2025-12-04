@@ -155,6 +155,7 @@ with st.container():
     st.markdown(f"### Heatmap: Delivered per kamer")
 
     deliverd_df['kamer'] = deliverd_df['Location_kopie'].astype(str).str.split('/').str[-1].str.strip()
+    deliverd_df['kamer'] = deliverd_df.groupby('alarm_id')['kamer'].transform(lambda x: x.ffill().bfill())
     heatmap_df = deliverd_df[(deliverd_df['Date'] >= start_date) & (deliverd_df['Date'] <= end_date)]
 
     if not heatmap_df.empty:
@@ -240,45 +241,18 @@ with col2:
     else:
         st.info("Geen saturatie-waarden.")
 
-# --- GRAFIEK 3 ---  (GEFIXT: Delivered koppelen aan Finished + Room herleiden)
+# --- GRAFIEK 3 ---
 with col3:
-    st.markdown("#### Alarmen per device (gecorrigeerd)")
-
-    # Stap 1 — Delivered & Finished isoleren voor geselecteerde dag
-    df_del = deliverd_df[deliverd_df['Date'] == selected_day].copy()
-    df_fin = finished_df[finished_df['Date'] == selected_day].copy()
-
-    # Stap 2 — Extract Room uit FINISHED message (voor kamerherleiding)
-    def extract_room(msg):
-        if pd.isna(msg):
-            return None
-        match = re.search(r'(room|kamer|rm|bed)[^\d]*(\d+)', msg.lower())
-        return match.group(2) if match else None
-
-    df_fin["ExtractedRoom"] = df_fin["Message"].apply(extract_room)
-
-    # Stap 3 — Koppel Delivered ↔ Finished via gemeenschappelijke Alarm-ID (id)
-    df_del = df_del.merge(
-        df_fin[["id", "ExtractedRoom"]],
-        on="id",
-        how="left"
-    )
-
-    # Stap 4 — Filter op de geselecteerde kamer
-    df_room = df_del[df_del["ExtractedRoom"] == str(selected_room)]
-
-    # device counts
-    if df_room.empty:
-        st.info("Geen alarmen voor deze kamer.")
+    st.markdown("#### Alarmen per device")
+    dag_all = combined_df[(combined_df['Date'] == selected_day) & (combined_df['kind'] == selected_room)]
+    if dag_all.empty:
+        st.info("Geen alarmen.")
     else:
-        counts = df_room.groupby("Device name").size().sort_values(ascending=False)
-
+        counts = dag_all.groupby('Device name').size()
         figD, axD = plt.subplots(figsize=(5, 3))
         axD.bar(counts.index.astype(str), counts.values)
-        axD.set_xticklabels(counts.index.astype(str), rotation=45, ha="right")
-        axD.set_ylabel("Aantal alarmen")
+        axD.set_xticklabels(counts.index.astype(str), rotation=45)
         st.pyplot(figD)
-
 
 # ---------------- SECTION 3: Pie chart & Acceptatie% side-by-side ----------------
 st.markdown("## Omgang met alarmen per verpleegkundige")
