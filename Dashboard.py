@@ -257,7 +257,75 @@ st.markdown(
 )
 col1, col2 = st.columns([1, 1])
 
-# Pie chart & acceptatiecode blijft hetzelfde als jouw vorige code
+
+with col1:
+    st.markdown("### Pie chart: Afhandeling van alarmen (primaire verpleegkundige)")
+    st.write("Filter op specifieke verpleegkundige/device (standaard: alle devices).")
+    # Prepare filtered_df for pie logic (same as before)
+    filtered_pie_df = combined_df[combined_df['Status'].isin(['Started', 'Delivered', 'Received response', 'Erase on response'])].copy()
+    filtered_pie_df['Time_diff_seconds'] = (filtered_pie_df['Date and time'] - filtered_pie_df.groupby('id')['Date and time'].transform('min')).dt.total_seconds()
+    filtered_pie_df = filtered_pie_df[(filtered_pie_df['Date'] >= start_date) & (filtered_pie_df['Date'] <= end_date)].copy()
+
+    smart_devices = sorted(combined_df.loc[combined_df['Service name'] == 'SmartAndroid', 'Device name'].dropna().unique().astype(str).tolist())
+    selected_device = st.selectbox("Selecteer verpleegkundige/device (voor pie chart):", options=['Alle'] + smart_devices)
+
+    def calculate_pie_data(local_df, device=None):
+        pie_chart_totals = {'Geen reactie': 0, 'Geaccepteerd, geweigerd of bezet knop': 0, 'Opgelost': 0}
+        for alarm_id, alarm_rows in local_df.groupby('id'):
+            involved_devices = alarm_rows['Device name'].dropna().unique().astype(str)
+            if device and device != 'Alle':
+                if device not in involved_devices:
+                    continue
+                involved_devices = [device]
+            started_rows = alarm_rows[alarm_rows['Status'] == 'Started']
+            if started_rows.empty:
+                continue
+            first_started = started_rows.iloc[0]
+            rows_after_started = alarm_rows[alarm_rows.index > first_started.name]
+            responses_in_between = rows_after_started['Response'].dropna().str.strip()
+            relevant_responses = responses_in_between.isin(['Accepted alarm', 'Rejected alarm', 'User is busy'])
+            for dev in involved_devices:
+                if relevant_responses.any():
+                    pie_chart_totals['Geaccepteerd, geweigerd of bezet knop'] += 1
+                else:
+                    second_delivered_after_3_sec = (alarm_rows['Status'] == 'Delivered') & (alarm_rows.get('Time_diff_seconds', pd.Series()).gt(3))
+                    if second_delivered_after_3_sec.any():
+                        pie_chart_totals['Geen reactie'] += 1
+                    else:
+                        pie_chart_totals['Opgelost'] += 1
+        return pie_chart_totals
+
+    pie_totals = calculate_pie_data(filtered_pie_df, device=selected_device)
+    labels = ['Geen reactie', 'Geaccepteerd, geweigerd of bezet knop', 'Opgelost']
+    sizes = [pie_totals[label] for label in labels]
+    if sum(sizes) == 0:
+        sizes = [1,1,1]
+    fig_pie, ax_pie = plt.subplots(figsize=(5,5))
+    ax_pie.pie(sizes, labels=labels, autopct='%1.1f%%', colors=[PRIMARY_COLOR, SECONDARY_COLOR, "#3CB371"], textprops={'fontsize':11})
+    ax_pie.set_title(f'Afhandeling alarmen: {selected_device}')
+    st.pyplot(fig_pie)
+    st.caption("Verdeling van alarmafhandeling: Geen reactie / Knop-reactie / Opgelost (binnen geselecteerde periode).")
+
+with col2:
+    st.markdown("### Percentage geaccepteerde alarmen per verpleegkundige")
+    st.write("Toont per device het percentage geaccepteerde alarmen van alle alarmen die binnen zijn gekomen op dat apparaat (binnen geselecteerde periode).")
+    df_range = combined_df[(combined_df['Date'] >= start_date) & (combined_df['Date'] <= end_date)].copy()
+    df_range['Response'] = df_range['Response'].fillna('')
+    delivered_per_device = df_range[df_range['Status'] == 'Delivered'].groupby('Device name').size()
+    accepted_per_device = df_range[df_range['Response'] == 'Accepted alarm'].groupby('Device name').size()
+    barplot_df = pd.DataFrame({'Delivered': delivered_per_device, 'Accepted': accepted_per_device}).fillna(0)
+    if not barplot_df.empty:
+        barplot_df['Accepted %'] = (barplot_df['Accepted'] / barplot_df['Delivered']).replace([np.inf, -np.inf], 0).fillna(0) * 100
+        barplot_df = barplot_df.sort_values('Accepted %', ascending=False)
+        fig_b, ax_b = plt.subplots(figsize=(8,4))
+        ax_b.bar(barplot_df.index.astype(str), barplot_df['Accepted %'], color=PRIMARY_COLOR, alpha=0.9)
+        ax_b.set_xticklabels(barplot_df.index.astype(str), rotation=45, ha='right')
+        ax_b.set_ylabel("Accepted %")
+        ax_b.set_title("Accepted percentage per device")
+        st.pyplot(fig_b)
+        st.caption("Percentage geaccepteerde alarmen = (Accepted) / (Delivered) per device binnen de gekozen periode.")
+    else:
+        st.info("Onvoldoende data voor de acceptatiebarplot in deze periode.")
+
 
 st.markdown("<hr style='border:2px solid #5B2B9F'>", unsafe_allow_html=True)
-st.markdown("<small>Dashboard gemaakt — kleuraccenten in paars/blauw voor overzicht. Gebruik de filters bovenaan om data direct te verkennen.</small>", unsafe_allow_html=True)
